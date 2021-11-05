@@ -175,6 +175,7 @@ public class QuorumCnxManager {
     public boolean initiateConnection(Socket sock, Long sid) {
         DataOutputStream dout = null;
         try {
+            // 发送本机的sid给对方
             // Sending id and challenge
             dout = new DataOutputStream(sock.getOutputStream());
             dout.writeLong(self.getId());
@@ -192,7 +193,10 @@ public class QuorumCnxManager {
             closeSocket(sock);
             // Otherwise proceed with the connection
         } else {
+
+            // 创建发送工作组件
             SendWorker sw = new SendWorker(sock, sid);
+            // 创建接收工作组件
             RecvWorker rw = new RecvWorker(sock, sid, sw);
             sw.setRecv(rw);
 
@@ -206,7 +210,8 @@ public class QuorumCnxManager {
                 queueSendMap.put(sid, new ArrayBlockingQueue<ByteBuffer>(
                         SEND_CAPACITY));
             }
-            
+
+            // 启动两个组件
             sw.start();
             rw.start();
             
@@ -246,9 +251,10 @@ public class QuorumCnxManager {
             LOG.warn("Exception reading or writing challenge: " + e.toString());
             return false;
         }
-        
+
         //If wins the challenge, then close the new connection.
         if (sid < self.getId()) {
+            // 如果sid小于本机的sid，那么就断开该连接，由本机向那个sid机器发起连接
             /*
              * This replica might still believe that the connection to sid is
              * up, so we have to shut down the workers before trying to open a
@@ -268,6 +274,8 @@ public class QuorumCnxManager {
 
             // Otherwise start worker threads to receive data.
         } else {
+
+            // 初始化两个发送和接收组件
             SendWorker sw = new SendWorker(sock, sid);
             RecvWorker rw = new RecvWorker(sock, sid, sw);
             sw.setRecv(rw);
@@ -302,6 +310,7 @@ public class QuorumCnxManager {
          */
         if (self.getId() == sid) {
              b.position(0);
+             // 直接加入到接收队列中去
              addToRecvQueue(new Message(b.duplicate(), sid));
             /*
              * Otherwise send to the corresponding thread to send.
@@ -314,6 +323,7 @@ public class QuorumCnxManager {
                  ArrayBlockingQueue<ByteBuffer> bq = new ArrayBlockingQueue<ByteBuffer>(
                          SEND_CAPACITY);
                  queueSendMap.put(sid, bq);
+                 // 加入到发送队列
                  addToSendQueue(bq, b);
 
              } else {
@@ -339,6 +349,7 @@ public class QuorumCnxManager {
         if (senderWorkerMap.get(sid) == null){
             InetSocketAddress electionAddr;
             if (self.quorumPeers.containsKey(sid)) {
+                // 获取该sid的地址，以便进行连接
                 electionAddr = self.quorumPeers.get(sid).electionAddr;
             } else {
                 LOG.warn("Invalid server id: " + sid);
@@ -351,6 +362,7 @@ public class QuorumCnxManager {
                 }
                 Socket sock = new Socket();
                 setSockOpts(sock);
+                // 发起连接
                 sock.connect(self.getView().get(sid).electionAddr, cnxTO);
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("Connected to server " + sid);
@@ -480,14 +492,17 @@ public class QuorumCnxManager {
                 try {
                     ss = new ServerSocket();
                     ss.setReuseAddress(true);
+                    // 选举端口号 3888
                     int port = self.quorumPeers.get(self.getId()).electionAddr
                             .getPort();
                     InetSocketAddress addr = new InetSocketAddress(port);
                     LOG.info("My election bind port: " + addr.toString());
                     setName(self.quorumPeers.get(self.getId()).electionAddr
                             .toString());
+                    // 开始监听3888端口
                     ss.bind(addr);
                     while (!shutdown) {
+                        // 获取连接
                         Socket client = ss.accept();
                         setSockOpts(client);
                         LOG.info("Received connection request "
