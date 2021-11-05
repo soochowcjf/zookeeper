@@ -406,9 +406,13 @@ public class QuorumPeer extends Thread implements QuorumStats.Provider {
     
     @Override
     public synchronized void start() {
+        // 从快照文件、事务日志文件加载数据到内存
         loadDataBase();
-        cnxnFactory.start();        
+        // 启动网络通信组件，监听2181端口
+        cnxnFactory.start();
+        // 开始选举
         startLeaderElection();
+        // 启动该线程
         super.start();
     }
 
@@ -582,6 +586,7 @@ public class QuorumPeer extends Thread implements QuorumStats.Provider {
             le = new AuthFastLeaderElection(this, true);
             break;
         case 3:
+            // 默认是3
             qcm = new QuorumCnxManager(this);
             QuorumCnxManager.Listener listener = qcm.listener;
             if(listener != null){

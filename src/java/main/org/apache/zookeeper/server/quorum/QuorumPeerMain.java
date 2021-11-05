@@ -96,20 +96,25 @@ public class QuorumPeerMain {
     protected void initializeAndRun(String[] args)
         throws ConfigException, IOException
     {
+        // 读取zoo.cfg配置文件
         QuorumPeerConfig config = new QuorumPeerConfig();
         if (args.length == 1) {
             config.parse(args[0]);
         }
 
+        // 启动定时清理快照文件、事务日志文件的任务
         // Start and schedule the the purge task
         DatadirCleanupManager purgeMgr = new DatadirCleanupManager(config
                 .getDataDir(), config.getDataLogDir(), config
                 .getSnapRetainCount(), config.getPurgeInterval());
         purgeMgr.start();
 
+        // 如果配置了servers参数，表示集群启动
         if (args.length == 1 && config.servers.size() > 0) {
             runFromConfig(config);
         } else {
+
+            // 如果没有配置，则是单机启动
             LOG.warn("Either no config or no quorum defined in config, running "
                     + " in standalone mode");
             // there is only server in the quorum -- run as standalone

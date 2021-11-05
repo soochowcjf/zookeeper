@@ -92,8 +92,11 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
         this.ss = ServerSocketChannel.open();
         ss.socket().setReuseAddress(true);
         LOG.info("binding to port " + addr);
+        // 绑定端口
         ss.socket().bind(addr);
+        // 设置为非阻塞模式
         ss.configureBlocking(false);
+        // 将该ServerSocketChannel设置到selector上
         ss.register(selector, SelectionKey.OP_ACCEPT);
     }
 
@@ -184,6 +187,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                         selected);
                 Collections.shuffle(selectedList);
                 for (SelectionKey k : selectedList) {
+                    // 如果是连接事件
                     if ((k.readyOps() & SelectionKey.OP_ACCEPT) != 0) {
                         SocketChannel sc = ((ServerSocketChannel) k
                                 .channel()).accept();
@@ -197,6 +201,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                             LOG.info("Accepted socket connection from "
                                      + sc.socket().getRemoteSocketAddress());
                             sc.configureBlocking(false);
+                            // 注册感兴趣读事件
                             SelectionKey sk = sc.register(selector,
                                     SelectionKey.OP_READ);
                             NIOServerCnxn cnxn = createConnection(sc, sk);
@@ -204,6 +209,7 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                             addCnxn(cnxn);
                         }
                     } else if ((k.readyOps() & (SelectionKey.OP_READ | SelectionKey.OP_WRITE)) != 0) {
+                        // 如果是读事件或者写事件
                         NIOServerCnxn c = (NIOServerCnxn) k.attachment();
                         c.doIO(k);
                     } else {

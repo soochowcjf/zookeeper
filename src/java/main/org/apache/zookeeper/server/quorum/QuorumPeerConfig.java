@@ -49,6 +49,7 @@ public class QuorumPeerConfig {
     protected String dataDir;
     protected String dataLogDir;
     protected int tickTime = ZooKeeperServer.DEFAULT_TICK_TIME;
+    // 每个客户端可以建立的连接数，默认60
     protected int maxClientCnxns = 60;
     /** defaults to -1 if not set explicitly */
     protected int minSessionTimeout = -1;
