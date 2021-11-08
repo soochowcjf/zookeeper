@@ -35,6 +35,7 @@ public class QuorumMaj implements QuorumVerifier {
      * @param n number of servers
      */
     public QuorumMaj(int n){
+        // 如果是3个节点的zookeeper，那么half = 3/2 = 1
         this.half = n/2;
     }
     

@@ -131,6 +131,7 @@ public class QuorumPeerMain {
   
       LOG.info("Starting quorum peer");
       try {
+          // 管理请求连接工厂
           ServerCnxnFactory cnxnFactory = ServerCnxnFactory.createFactory();
           cnxnFactory.configure(config.getClientPortAddress(),
                                 config.getMaxClientCnxns());

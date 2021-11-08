@@ -96,6 +96,7 @@ public class QuorumPeer extends Thread implements QuorumStats.Provider {
                 InetSocketAddress electionAddr) {
             this.id = id;
             this.addr = addr;
+            // 选举端口 3888
             this.electionAddr = electionAddr;
         }
 
@@ -491,6 +492,7 @@ public class QuorumPeer extends Thread implements QuorumStats.Provider {
                 throw new RuntimeException(e);
             }
         }
+        // 创建选举算法
         this.electionAlg = createElectionAlgorithm(electionType);
     }
     
