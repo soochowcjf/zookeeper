@@ -137,8 +137,7 @@ public class ZKDatabase {
     
     
     /**
-     * the minimum committed transaction log
-     * available in memory
+     * the minimum committed transaction log available in memory
      * @return the minimum committed transaction
      * log available in memory
      */

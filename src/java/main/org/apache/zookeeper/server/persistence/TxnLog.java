@@ -45,8 +45,7 @@ public interface TxnLog {
     boolean append(TxnHeader hdr, Record r) throws IOException;
 
     /**
-     * Start reading the transaction logs
-     * from a given zxid
+     * Start reading the transaction logs from a given zxid
      * @param zxid
      * @return returns an iterator to read the 
      * next transaction in the logs.
@@ -62,8 +61,7 @@ public interface TxnLog {
     long getLastLoggedZxid() throws IOException;
     
     /**
-     * truncate the log to get in sync with the 
-     * leader.
+     * truncate the log to get in sync with the leader.
      * @param zxid the zxid to truncate at.
      * @throws IOException 
      */

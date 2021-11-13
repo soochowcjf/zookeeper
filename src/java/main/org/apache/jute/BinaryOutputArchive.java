@@ -115,7 +115,9 @@ public class BinaryOutputArchive implements OutputArchive {
     		out.writeInt(-1);
     		return;
     	}
+        // 先写长度域，bytebuffer的长度
     	out.writeInt(barr.length);
+        // 写入字节
         out.write(barr);
     }
     

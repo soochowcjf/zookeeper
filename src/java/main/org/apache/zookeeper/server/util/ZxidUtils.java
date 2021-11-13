@@ -19,15 +19,37 @@
 package org.apache.zookeeper.server.util;
 
 public class ZxidUtils {
+	/**
+	 * 取高32位
+	 *
+	 * @param zxid
+	 * @return
+	 */
 	static public long getEpochFromZxid(long zxid) {
 		return zxid >> 32L;
 	}
+
+	/**
+	 * 与该值进行与运算，相当于，只取低32位
+	 * 11111111 11111111 11111111 11111111
+	 * @param zxid
+	 * @return
+	 */
 	static public long getCounterFromZxid(long zxid) {
 		return zxid & 0xffffffffL;
 	}
+
+	/**
+	 * 将epoch放在搞32位，counter放在低32位
+	 *
+	 * @param epoch
+	 * @param counter
+	 * @return
+	 */
 	static public long makeZxid(long epoch, long counter) {
 		return (epoch << 32L) | (counter & 0xffffffffL);
 	}
+
 	static public String zxidToString(long zxid) {
 		return Long.toHexString(zxid);
 	}

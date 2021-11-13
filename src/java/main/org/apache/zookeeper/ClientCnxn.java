@@ -371,15 +371,19 @@ public class ClientCnxn {
         this.watcher = watcher;
         this.sessionId = sessionId;
         this.sessionPasswd = sessionPasswd;
+        // curator默认是60s
         this.sessionTimeout = sessionTimeout;
         this.hostProvider = hostProvider;
         this.chrootPath = chrootPath;
 
         connectTimeout = sessionTimeout / hostProvider.size();
+        // 60*2/3=40s
         readTimeout = sessionTimeout * 2 / 3;
         readOnly = canBeReadOnly;
 
+        // 处理与服务端连接的线程
         sendThread = new SendThread(clientCnxnSocket);
+        // 处理事件的线程
         eventThread = new EventThread();
 
     }
@@ -702,8 +706,7 @@ public class ClientCnxn {
         private boolean isFirstConnect = true;
 
         void readResponse(ByteBuffer incomingBuffer) throws IOException {
-            ByteBufferInputStream bbis = new ByteBufferInputStream(
-                    incomingBuffer);
+            ByteBufferInputStream bbis = new ByteBufferInputStream(incomingBuffer);
             BinaryInputArchive bbia = BinaryInputArchive.getArchive(bbis);
             ReplyHeader replyHdr = new ReplyHeader();
 
@@ -782,6 +785,7 @@ public class ClientCnxn {
                     throw new IOException("Nothing in the queue, but got "
                             + replyHdr.getXid());
                 }
+                // 从待响应队列移除
                 packet = pendingQueue.remove();
             }
             /*
@@ -790,8 +794,7 @@ public class ClientCnxn {
              */
             try {
                 if (packet.requestHeader.getXid() != replyHdr.getXid()) {
-                    packet.replyHeader.setErr(
-                            KeeperException.Code.CONNECTIONLOSS.intValue());
+                    packet.replyHeader.setErr(KeeperException.Code.CONNECTIONLOSS.intValue());
                     throw new IOException("Xid out of order. Got Xid "
                             + replyHdr.getXid() + " with err " +
                             + replyHdr.getErr() +
@@ -846,13 +849,10 @@ public class ClientCnxn {
         }
 
         void primeConnection() throws IOException {
-            LOG.info("Socket connection established to "
-                     + clientCnxnSocket.getRemoteSocketAddress()
-                     + ", initiating session");
+            LOG.info("Socket connection established to " + clientCnxnSocket.getRemoteSocketAddress() + ", initiating session");
             isFirstConnect = false;
             long sessId = (seenRwServerBefore) ? sessionId : 0;
-            ConnectRequest conReq = new ConnectRequest(0, lastZxid,
-                    sessionTimeout, sessId, sessionPasswd);
+            ConnectRequest conReq = new ConnectRequest(0, lastZxid, sessionTimeout, sessId, sessionPasswd);
             synchronized (outgoingQueue) {
                 // We add backwards since we are pushing into the front
                 // Only send if there's a pending watch
@@ -1039,10 +1039,13 @@ public class ClientCnxn {
                                         + Long.toHexString(sessionId));
                     }
                     if (state.isConnected()) {
+                        // 40/2 - idleSend
                         int timeToNextPing = readTimeout / 2
                                 - clientCnxnSocket.getIdleSend();
                         if (timeToNextPing <= 0) {
+                            // 如果进入到这里的话，说明呢，其实已经距离上次发送数据包已经超过了20s了，也就是1/3的sessionTimeout，那么就需要发送一个ping给服务端
                             sendPing();
+                            // 更新最后发送时间
                             clientCnxnSocket.updateLastSend();
                         } else {
                             if (timeToNextPing < to) {
@@ -1209,8 +1212,7 @@ public class ClientCnxn {
                     + ", sessionid = 0x" + Long.toHexString(sessionId)
                     + ", negotiated timeout = " + negotiatedSessionTimeout
                     + (isRO ? " (READ-ONLY mode)" : ""));
-            KeeperState eventState = (isRO) ?
-                    KeeperState.ConnectedReadOnly : KeeperState.SyncConnected;
+            KeeperState eventState = (isRO) ? KeeperState.ConnectedReadOnly : KeeperState.SyncConnected;
             eventThread.queueEvent(new WatchedEvent(
                     Watcher.Event.EventType.None,
                     eventState, null));

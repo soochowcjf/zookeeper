@@ -213,6 +213,7 @@ public class Util {
     public static long padLogFile(FileOutputStream f,long currentSize,
             long preAllocSize) throws IOException{
         long position = f.getChannel().position();
+        // 当前文件大小快要到达
         if (position + 4096 >= currentSize) {
             currentSize = currentSize + preAllocSize;
             fill.position(0);
@@ -235,6 +236,7 @@ public class Util {
             // empty transaction
             if (bytes.length == 0)
                 return bytes;
+            // 结尾是否正确
             if (ia.readByte("EOF") != 'B') {
                 LOG.error("Last transaction was partial.");
                 return null;

@@ -94,7 +94,9 @@ public class QuorumPeer extends Thread implements QuorumStats.Provider {
     public static class QuorumServer {
         public QuorumServer(long id, InetSocketAddress addr,
                 InetSocketAddress electionAddr) {
+            // myid
             this.id = id;
+            // 集群间通信端口 2888
             this.addr = addr;
             // 选举端口 3888
             this.electionAddr = electionAddr;
@@ -411,7 +413,7 @@ public class QuorumPeer extends Thread implements QuorumStats.Provider {
         loadDataBase();
         // 启动网络通信组件，监听2181端口
         cnxnFactory.start();
-        // 开始选举
+        // 初始化选举算法
         startLeaderElection();
         // 启动该线程
         super.start();
@@ -468,6 +470,7 @@ public class QuorumPeer extends Thread implements QuorumStats.Provider {
     }
     synchronized public void startLeaderElection() {
     	try {
+            // 当前的选票
     		currentVote = new Vote(myid, getLastLoggedZxid(), getCurrentEpoch());
     	} catch(IOException e) {
     		RuntimeException re = new RuntimeException(e.getMessage());
@@ -553,7 +556,7 @@ public class QuorumPeer extends Thread implements QuorumStats.Provider {
         }
         return zkDb.getDataTreeLastProcessedZxid();
     }
-    
+
     public Follower follower;
     public Leader leader;
     public Observer observer;
@@ -720,6 +723,7 @@ public class QuorumPeer extends Thread implements QuorumStats.Provider {
                         }
                     } else {
                         try {
+                            // 进行选举
                             setCurrentVote(makeLEStrategy().lookForLeader());
                         } catch (Exception e) {
                             LOG.warn("Unexpected exception", e);

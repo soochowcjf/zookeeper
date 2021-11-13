@@ -22,10 +22,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -201,9 +198,10 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                             LOG.info("Accepted socket connection from "
                                      + sc.socket().getRemoteSocketAddress());
                             sc.configureBlocking(false);
-                            // 注册感兴趣读事件
-                            SelectionKey sk = sc.register(selector,
-                                    SelectionKey.OP_READ);
+                            // 连接建立成功之后呢，注册感兴趣读事件
+                            // 这里呢，用于建立连接的selector和轮询读写事件的selector其实是同一个selector，这个设计其实是不太好的。
+                            SelectionKey sk = sc.register(selector, SelectionKey.OP_READ);
+                            // 将该连接封装到 NIOServerCnxn 中，每个连接都有自己的读写buffer
                             NIOServerCnxn cnxn = createConnection(sc, sk);
                             sk.attach(cnxn);
                             addCnxn(cnxn);

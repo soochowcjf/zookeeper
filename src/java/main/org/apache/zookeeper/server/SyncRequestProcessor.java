@@ -36,8 +36,7 @@ import org.slf4j.LoggerFactory;
 public class SyncRequestProcessor extends Thread implements RequestProcessor {
     private static final Logger LOG = LoggerFactory.getLogger(SyncRequestProcessor.class);
     private final ZooKeeperServer zks;
-    private final LinkedBlockingQueue<Request> queuedRequests =
-        new LinkedBlockingQueue<Request>();
+    private final LinkedBlockingQueue<Request> queuedRequests = new LinkedBlockingQueue<Request>();
     private final RequestProcessor nextProcessor;
 
     private Thread snapInProcess = null;
@@ -51,6 +50,8 @@ public class SyncRequestProcessor extends Thread implements RequestProcessor {
     private final LinkedList<Request> toFlush = new LinkedList<Request>();
     private final Random r = new Random(System.nanoTime());
     /**
+     * 默认是10w
+     *
      * The number of log entries to log before starting a snapshot
      */
     private static int snapCount = ZooKeeperServer.getSnapCount();
@@ -106,9 +107,11 @@ public class SyncRequestProcessor extends Thread implements RequestProcessor {
                     break;
                 }
                 if (si != null) {
+                    // 将请求写到事务日志文件中去
                     // track the number of records written to the log
                     if (zks.getZKDatabase().append(si)) {
                         logCount++;
+                        // 如果写请求到了一定数量，写快照文件
                         if (logCount > (snapCount / 2 + randRoll)) {
                             randRoll = r.nextInt(snapCount/2);
                             // roll the log
@@ -117,6 +120,7 @@ public class SyncRequestProcessor extends Thread implements RequestProcessor {
                             if (snapInProcess != null && snapInProcess.isAlive()) {
                                 LOG.warn("Too busy to snap, skipping");
                             } else {
+                                // 启动后台线程去写快照文件
                                 snapInProcess = new Thread("Snapshot Thread") {
                                         public void run() {
                                             try {
@@ -132,7 +136,7 @@ public class SyncRequestProcessor extends Thread implements RequestProcessor {
                         }
                     } else if (toFlush.isEmpty()) {
                         // optimization for read heavy workloads
-                        // iff this is a read, and there are no pending
+                        // if this is a read, and there are no pending
                         // flushes (writes), then just pass this to the next
                         // processor
                         nextProcessor.processRequest(si);
@@ -161,9 +165,12 @@ public class SyncRequestProcessor extends Thread implements RequestProcessor {
         if (toFlush.isEmpty())
             return;
 
+        // 调用底层的写文件流，将数据刷到磁盘去
         zks.getZKDatabase().commit();
         while (!toFlush.isEmpty()) {
             Request i = toFlush.remove();
+            // leader => AckRequestProcessor
+            // follower => SendACKRequestProcessor
             nextProcessor.processRequest(i);
         }
         if (nextProcessor instanceof Flushable) {

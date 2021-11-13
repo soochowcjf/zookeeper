@@ -84,8 +84,7 @@ public class LearnerHandler extends Thread {
     /**
      * The packets to be sent to the learner
      */
-    final LinkedBlockingQueue<QuorumPacket> queuedPackets =
-        new LinkedBlockingQueue<QuorumPacket>();
+    final LinkedBlockingQueue<QuorumPacket> queuedPackets = new LinkedBlockingQueue<QuorumPacket>();
 
     private BinaryInputArchive ia;
 
@@ -233,16 +232,15 @@ public class LearnerHandler extends Thread {
     @Override
     public void run() {
         try {            
-            ia = BinaryInputArchive.getArchive(new BufferedInputStream(sock
-                    .getInputStream()));
+            ia = BinaryInputArchive.getArchive(new BufferedInputStream(sock.getInputStream()));
             bufferedOutput = new BufferedOutputStream(sock.getOutputStream());
             oa = BinaryOutputArchive.getArchive(bufferedOutput);
 
+            // 读取follower的注册信息
             QuorumPacket qp = new QuorumPacket();
             ia.readRecord(qp, "packet");
             if(qp.getType() != Leader.FOLLOWERINFO && qp.getType() != Leader.OBSERVERINFO){
-            	LOG.error("First packet " + qp.toString()
-                        + " is not FOLLOWERINFO or OBSERVERINFO!");
+            	LOG.error("First packet " + qp.toString() + " is not FOLLOWERINFO or OBSERVERINFO!");
                 return;
             }
             byte learnerInfoData[] = qp.getData();
@@ -253,25 +251,28 @@ public class LearnerHandler extends Thread {
             	} else {
             		LearnerInfo li = new LearnerInfo();
             		ByteBufferInputStream.byteBuffer2Record(ByteBuffer.wrap(learnerInfoData), li);
+                    // follower的myid
             		this.sid = li.getServerid();
+                    // 协议version
             		this.version = li.getProtocolVersion();
             	}
             } else {
             	this.sid = leader.followerCounter.getAndDecrement();
             }
 
-            LOG.info("Follower sid: " + sid + " : info : "
-                    + leader.self.quorumPeers.get(sid));
+            LOG.info("Follower sid: " + sid + " : info : " + leader.self.quorumPeers.get(sid));
                         
             if (qp.getType() == Leader.OBSERVERINFO) {
                   learnerType = LearnerType.OBSERVER;
             }            
-            
+
+            // 读取follower发过来的acceptEpoch
             long lastAcceptedEpoch = ZxidUtils.getEpochFromZxid(qp.getZxid());
             
             long peerLastZxid;
             StateSummary ss = null;
             long zxid = qp.getZxid();
+            // 等待半数节点收到 FOLLOWERINFO
             long newEpoch = leader.getEpochToPropose(this.getSid(), lastAcceptedEpoch);
             
             if (this.getVersion() < 0x10000) {
@@ -283,9 +284,12 @@ public class LearnerHandler extends Thread {
             } else {
                 byte ver[] = new byte[4];
                 ByteBuffer.wrap(ver).putInt(0x10000);
+                // 写回 LEADERINFO 给 follower
                 QuorumPacket newEpochPacket = new QuorumPacket(Leader.LEADERINFO, ZxidUtils.makeZxid(newEpoch, 0), ver, null);
                 oa.writeRecord(newEpochPacket, "packet");
                 bufferedOutput.flush();
+
+                // 读取 ACKEPOCH
                 QuorumPacket ackEpochPacket = new QuorumPacket();
                 ia.readRecord(ackEpochPacket, "packet");
                 if (ackEpochPacket.getType() != Leader.ACKEPOCH) {
@@ -294,7 +298,9 @@ public class LearnerHandler extends Thread {
                     return;
 				}
                 ByteBuffer bbepoch = ByteBuffer.wrap(ackEpochPacket.getData());
+                // bbepoch是follower的currentEpoch，Zxid是follower节点的最后处理的事务id
                 ss = new StateSummary(bbepoch.getInt(), ackEpochPacket.getZxid());
+                // 等待半数节点收到 ACKEPOCH
                 leader.waitForEpochAck(this.getSid(), ss);
             }
             peerLastZxid = ss.getLastZxid();
@@ -324,8 +330,8 @@ public class LearnerHandler extends Thread {
 
                 if (proposals.size() != 0) {
                     LOG.debug("proposal size is {}", proposals.size());
-                    if ((maxCommittedLog >= peerLastZxid)
-                            && (minCommittedLog <= peerLastZxid)) {
+                    // 如果zixd在min~max之间
+                    if ((maxCommittedLog >= peerLastZxid) && (minCommittedLog <= peerLastZxid)) {
                         LOG.debug("Sending proposals to follower");
 
                         // as we look through proposals, this variable keeps track of previous
@@ -343,9 +349,13 @@ public class LearnerHandler extends Thread {
                         packetToSend = Leader.DIFF;
                         zxidToSend = maxCommittedLog;
 
+                        // 10 11 12 13 14 15
+                        // peerLastZxid=12
+                        //
                         for (Proposal propose: proposals) {
                             // skip the proposals the peer already has
                             if (propose.packet.getZxid() <= peerLastZxid) {
+                                // 如果该提议的zxid <= follower的最后的zxid
                                 prevProposalZxid = propose.packet.getZxid();
                                 continue;
                             } else {
@@ -362,12 +372,14 @@ public class LearnerHandler extends Thread {
                                     }
                                 }
                                 queuePacket(propose.packet);
-                                QuorumPacket qcommit = new QuorumPacket(Leader.COMMIT, propose.packet.getZxid(),
-                                        null, null);
+                                QuorumPacket qcommit = new QuorumPacket(Leader.COMMIT, propose.packet.getZxid(), null, null);
                                 queuePacket(qcommit);
                             }
                         }
                     } else if (peerLastZxid > maxCommittedLog) {
+                        // 这种情况呢，可能存在于：客户端一条写请求，写给了leader，leader写进本地log日志了，但是没有发送给follower就挂了，
+                        // 然后剩余的两台follower重新选举，选了其中一台follower成为leader。
+                        // 之后呢，之前的leader又重启成功了，成为了follower，他需要将之前的那条数据给trunc掉
                         LOG.debug("Sending TRUNC to follower zxidToSend=0x{} updates=0x{}",
                                 Long.toHexString(maxCommittedLog),
                                 Long.toHexString(updates));
@@ -399,8 +411,8 @@ public class LearnerHandler extends Thread {
                 rl.unlock();
             }
 
-             QuorumPacket newLeaderQP = new QuorumPacket(Leader.NEWLEADER,
-                    ZxidUtils.makeZxid(newEpoch, 0), null, null);
+            // 发送 NEWLEADER 给follower
+             QuorumPacket newLeaderQP = new QuorumPacket(Leader.NEWLEADER, ZxidUtils.makeZxid(newEpoch, 0), null, null);
              if (getVersion() < 0x10000) {
                 oa.writeRecord(newLeaderQP, "packet");
             } else {
@@ -422,6 +434,7 @@ public class LearnerHandler extends Thread {
                         + Long.toHexString(leaderLastZxid)
                         + "sent zxid of db as 0x" 
                         + Long.toHexString(zxidToSend));
+                // 全量同步
                 // Dump data to peer
                 leader.zk.getZKDatabase().serializeSnapshot(oa);
                 oa.writeString("BenWasHere", "signature");

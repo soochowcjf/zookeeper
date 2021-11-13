@@ -73,6 +73,21 @@ public class SessionTrackerImpl extends Thread implements SessionTracker {
     }
 
     public static long initializeNextSession(long id) {
+        // 当前时间戳
+        // 10100011 01110011 11101001 01011011 00000011 11110000 10111001 00001111
+        // 左移24
+        // 01011011 00000011 11110000 10111001 00001111 00000000 00000000 00000000
+        // 右移8位
+        // 00000000 01011011 00000011 11110000 10111001 00001111 00000000 00000000
+
+        // id 其实就是myid，一般为1、2、3等
+        // 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000001
+        // 左移56位
+        // 00000001 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+
+        // 最后或的结果
+        // 00000001 01011011 00000011 11110000 10111001 00001111 00000000 00000000
+
         long nextSid = 0;
         nextSid = (System.currentTimeMillis() << 24) >> 8;
         nextSid =  nextSid | (id <<56);
@@ -86,6 +101,17 @@ public class SessionTrackerImpl extends Thread implements SessionTracker {
     SessionExpirer expirer;
 
     private long roundToInterval(long time) {
+        // 默认 expirationInterval 是2s
+        // (1/2 + 1) * 2 = 2
+        // (2/2 + 1) * 2 = 4
+        // (3/2 + 1) * 2 = 4
+        // (4/2 + 1) * 2 = 6
+        // (5/2 + 1) * 2 = 6
+        // (6/2 + 1) * 2 = 8
+        // (7/2 + 1) * 2 = 8
+        // (8/2 + 1) * 2 = 10
+        // (9/2 + 1) * 2 = 10
+
         // We give a one interval grace period
         return (time / expirationInterval + 1) * expirationInterval;
     }
@@ -100,6 +126,8 @@ public class SessionTrackerImpl extends Thread implements SessionTracker {
         this.sessionsWithTimeout = sessionsWithTimeout;
         nextExpirationTime = roundToInterval(System.currentTimeMillis());
         this.nextSessionId = initializeNextSession(sid);
+
+        // 恢复db中的session
         for (Entry<Long, Integer> e : sessionsWithTimeout.entrySet()) {
             addSession(e.getKey(), e.getValue());
         }
@@ -154,6 +182,7 @@ public class SessionTrackerImpl extends Thread implements SessionTracker {
                         expirer.expire(s);
                     }
                 }
+                // 下一个需要过期的时间桶
                 nextExpirationTime += expirationInterval;
             }
         } catch (InterruptedException e) {
@@ -174,6 +203,7 @@ public class SessionTrackerImpl extends Thread implements SessionTracker {
         if (s == null || s.isClosing()) {
             return false;
         }
+        // 将session的过期时间进行分桶管理
         long expireTime = roundToInterval(System.currentTimeMillis() + timeout);
         if (s.tickTime >= expireTime) {
             // Nothing needs to be done
@@ -181,14 +211,18 @@ public class SessionTrackerImpl extends Thread implements SessionTracker {
         }
         SessionSet set = sessionSets.get(s.tickTime);
         if (set != null) {
+            // 从之前的桶中移除session
             set.sessions.remove(s);
         }
+
+        // 设置该session的新的过期时间
         s.tickTime = expireTime;
         set = sessionSets.get(s.tickTime);
         if (set == null) {
             set = new SessionSet();
             sessionSets.put(expireTime, set);
         }
+        // 将session放入新桶中
         set.sessions.add(s);
         return true;
     }
@@ -234,6 +268,7 @@ public class SessionTrackerImpl extends Thread implements SessionTracker {
 
     synchronized public long createSession(int sessionTimeout) {
         addSession(nextSessionId, sessionTimeout);
+        //
         return nextSessionId++;
     }
 

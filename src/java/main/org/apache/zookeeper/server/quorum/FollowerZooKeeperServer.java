@@ -90,7 +90,9 @@ public class FollowerZooKeeperServer extends LearnerZooKeeperServer {
         request.hdr = hdr;
         request.txn = txn;
         request.zxid = hdr.getZxid();
+        //  0xffffffffL == 11111111 11111111 11111111 11111111
         if ((request.zxid & 0xffffffffL) != 0) {
+            // 说明zxid！=0
             pendingTxns.add(request);
         }
         syncProcessor.processRequest(request);
@@ -104,8 +106,7 @@ public class FollowerZooKeeperServer extends LearnerZooKeeperServer {
      */
     public void commit(long zxid) {
         if (pendingTxns.size() == 0) {
-            LOG.warn("Committing " + Long.toHexString(zxid)
-                    + " without seeing txn");
+            LOG.warn("Committing " + Long.toHexString(zxid) + " without seeing txn");
             return;
         }
         long firstElementZxid = pendingTxns.element().zxid;

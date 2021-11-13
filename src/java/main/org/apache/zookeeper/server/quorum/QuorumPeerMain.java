@@ -155,6 +155,7 @@ public class QuorumPeerMain {
           quorumPeer.setLearnerType(config.getPeerType());
   
           quorumPeer.start();
+          // 一直阻塞
           quorumPeer.join();
       } catch (InterruptedException e) {
           // warn, but generally this is ok

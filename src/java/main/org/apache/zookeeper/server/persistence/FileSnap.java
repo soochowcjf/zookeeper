@@ -54,8 +54,7 @@ public class FileSnap implements SnapShot {
     private static final int VERSION=2;
     private static final long dbId=-1;
     private static final Logger LOG = LoggerFactory.getLogger(FileSnap.class);
-    public final static int SNAP_MAGIC
-        = ByteBuffer.wrap("ZKSN".getBytes()).getInt();
+    public final static int SNAP_MAGIC = ByteBuffer.wrap("ZKSN".getBytes()).getInt();
     public FileSnap(File snapDir) {
         this.snapDir = snapDir;
     }
@@ -84,6 +83,7 @@ public class FileSnap implements SnapShot {
                 snapIS = new BufferedInputStream(new FileInputStream(snap));
                 crcIn = new CheckedInputStream(snapIS, new Adler32());
                 InputArchive ia = BinaryInputArchive.getArchive(crcIn);
+                // 反序列化快照文件到内存中
                 deserialize(dt,sessions, ia);
                 long checkSum = crcIn.getChecksum().getValue();
                 long val = ia.readLong("val");
@@ -117,8 +117,10 @@ public class FileSnap implements SnapShot {
      */
     public void deserialize(DataTree dt, Map<Long, Integer> sessions,
             InputArchive ia) throws IOException {
+        // 先序列化头部
         FileHeader header = new FileHeader();
         header.deserialize(ia, "fileheader");
+        // 校验魔数
         if (header.getMagic() != SNAP_MAGIC) {
             throw new IOException("mismatching magic headers "
                     + header.getMagic() + 
@@ -152,6 +154,7 @@ public class FileSnap implements SnapShot {
      * @throws IOException
      */
     private List<File> findNValidSnapshots(int n) throws IOException {
+        // 倒序
         List<File> files = Util.sortDataDir(snapDir.listFiles(),"snapshot", false);
         int count = 0;
         List<File> list = new ArrayList<File>();
@@ -228,8 +231,10 @@ public class FileSnap implements SnapShot {
             OutputArchive oa = BinaryOutputArchive.getArchive(crcOut);
             FileHeader header = new FileHeader(SNAP_MAGIC, VERSION, dbId);
             serialize(dt,sessions,oa, header);
+            // 写checksum
             long val = crcOut.getChecksum().getValue();
             oa.writeLong(val, "val");
+            // 写"/"
             oa.writeString("/", "path");
             sessOS.flush();
             crcOut.close();

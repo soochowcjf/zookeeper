@@ -88,12 +88,14 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                     }
                     lenBuffer.clear();
                     incomingBuffer = lenBuffer;
+                    // 更新最后接收到数据包的时间
                     updateLastHeard();
                     initialized = true;
                 } else {
                     sendThread.readResponse(incomingBuffer);
                     lenBuffer.clear();
                     incomingBuffer = lenBuffer;
+                    // 更新最后接收到数据包的时间
                     updateLastHeard();
                 }
             }
@@ -104,6 +106,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                         cnxn.sendThread.clientTunneledAuthenticationInProgress());
 
                 if (p != null) {
+                    // 更新最后发送数据包的时间
                     updateLastSend();
                     // If we already started writing p, p.bb will already exist
                     if (p.bb == null) {
@@ -112,12 +115,16 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                                 (p.requestHeader.getType() != OpCode.auth)) {
                             p.requestHeader.setXid(cnxn.getXid());
                         }
+                        // 构建请求bytebuffer
                         p.createBB();
                     }
+                    // 写到socket
                     sock.write(p.bb);
                     if (!p.bb.hasRemaining()) {
                         sentCount++;
+                        // 这个数据包写完才会从待发送队列移除，解决拆包问题
                         outgoingQueue.removeFirstOccurrence(p);
+                        // 如果请求头不是null，并且不是ping和auth请求，那么才会加入待响应队列中去
                         if (p.requestHeader != null
                                 && p.requestHeader.getType() != OpCode.ping
                                 && p.requestHeader.getType() != OpCode.auth) {
@@ -340,6 +347,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
         synchronized (this) {
             selected = selector.selectedKeys();
         }
+        // 更新时间
         // Everything below and until we get back to the select is
         // non blocking, so time is effectively a constant. That is
         // Why we just have to do this once, here
@@ -347,11 +355,14 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
         for (SelectionKey k : selected) {
             SocketChannel sc = ((SocketChannel) k.channel());
             if ((k.readyOps() & SelectionKey.OP_CONNECT) != 0) {
+                // 如果是连接成功事件
                 if (sc.finishConnect()) {
                     updateLastSendAndHeard();
+                    // 发送ConnectRequest给服务端，以便建立会话
                     sendThread.primeConnection();
                 }
             } else if ((k.readyOps() & (SelectionKey.OP_READ | SelectionKey.OP_WRITE)) != 0) {
+                // 如果是读事件、写事件
                 doIO(pendingQueue, outgoingQueue, cnxn);
             }
         }

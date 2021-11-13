@@ -79,8 +79,7 @@ public class Leader {
     LearnerCnxAcceptor cnxAcceptor;
     
     // list of all the followers
-    private final HashSet<LearnerHandler> learners =
-        new HashSet<LearnerHandler>();
+    private final HashSet<LearnerHandler> learners = new HashSet<LearnerHandler>();
 
     /**
      * Returns a copy of the current learner snapshot
@@ -181,6 +180,7 @@ public class Leader {
         try {
             ss = new ServerSocket();
             ss.setReuseAddress(true);
+            // 绑定2888端口，该端口用于集群间通信
             ss.bind(new InetSocketAddress(self.getQuorumAddress().getPort()));
         } catch (BindException e) {
             LOG.error("Couldn't bind to port "
@@ -297,11 +297,14 @@ public class Leader {
             try {
                 while (!stop) {
                     try{
+                        // 接收来自follower的请求
                         Socket s = ss.accept();
                         // start with the initLimit, once the ack is processed
                         // in LearnerHandler switch to the syncLimit
                         s.setSoTimeout(self.tickTime * self.initLimit);
                         s.setTcpNoDelay(nodelay);
+
+                        // 每个follower的连接，都会为他们创建一个LearnerHandler来处理该连接上的请求
                         LearnerHandler fh = new LearnerHandler(s, Leader.this);
                         fh.start();
                     } catch (SocketException e) {
@@ -352,11 +355,11 @@ public class Leader {
         try {
             self.tick = 0;
             zk.loadData();
-            
+
+            // leader节点的currentEpoch以及最后处理的zxid
             leaderStateSummary = new StateSummary(self.getCurrentEpoch(), zk.getLastProcessedZxid());
 
-            // Start thread that waits for connection requests from 
-            // new followers.
+            // Start thread that waits for connection requests from new followers.
             cnxAcceptor = new LearnerCnxAcceptor();
             cnxAcceptor.start();
             
@@ -369,17 +372,19 @@ public class Leader {
                 lastProposed = zk.getZxid();
             }
             
-            newLeaderProposal.packet = new QuorumPacket(NEWLEADER, zk.getZxid(),
-                    null, null);
+            newLeaderProposal.packet = new QuorumPacket(NEWLEADER, zk.getZxid(), null, null);
 
 
+            // 0xffffffffL 其实就是低32位全是1
             if ((newLeaderProposal.packet.getZxid() & 0xffffffffL) != 0) {
                 LOG.info("NEWLEADER proposal has Zxid of "
                         + Long.toHexString(newLeaderProposal.packet.getZxid()));
             }
             outstandingProposals.put(newLeaderProposal.packet.getZxid(), newLeaderProposal);
+            // 将自身的响应直接保存
             newLeaderProposal.ackSet.add(self.getId());
-            
+
+            // 等待所有follower都发送回 ACKEPOCH 消息
             waitForEpochAck(self.getId(), leaderStateSummary);
             self.setCurrentEpoch(epoch);
 
@@ -388,6 +393,7 @@ public class Leader {
             // acknowledged
             while (!self.getQuorumVerifier().containsQuorum(newLeaderProposal.ackSet)){
             //while (newLeaderProposal.ackCount <= self.quorumPeers.size() / 2) {
+                // 判断数据同步是否超过了initLimit，默认是10，tickTime默认是2s，总共也就是20s
                 if (self.tick > self.initLimit) {
                     // Followers aren't syncing fast enough,
                     // renounce leadership!
@@ -464,12 +470,12 @@ public class Leader {
                     f.ping();
                 }
 
+                // 如果没有一半的节点存活，那么集群就不可用了
               if (!tickSkip && !self.getQuorumVerifier().containsQuorum(syncedSet)) {
                 //if (!tickSkip && syncedCount < self.quorumPeers.size() / 2) {
                     // Lost quorum, shutdown
                   // TODO: message is wrong unless majority quorums used
-                    shutdown("Only " + syncedSet.size() + " followers, need "
-                            + (self.getVotingView().size() / 2));
+                    shutdown("Only " + syncedSet.size() + " followers, need " + (self.getVotingView().size() / 2));
                     // make sure the order is the same!
                     // the leader goes to looking
                     return;
@@ -549,30 +555,30 @@ public class Leader {
             }
             return;
         }
+        // 如果说呢，最后commit的提议id >= zxid, 说明已经commit过了
         if (lastCommitted >= zxid) {
             if (LOG.isDebugEnabled()) {
-                LOG.debug("proposal has already been committed, pzxid: 0x{} zxid: 0x{}",
-                        Long.toHexString(lastCommitted), Long.toHexString(zxid));
+                LOG.debug("proposal has already been committed, pzxid: 0x{} zxid: 0x{}", Long.toHexString(lastCommitted), Long.toHexString(zxid));
             }
             // The proposal has already been committed
             return;
         }
+        // 获取该zxid的提议
         Proposal p = outstandingProposals.get(zxid);
         if (p == null) {
-            LOG.warn("Trying to commit future proposal: zxid 0x{} from {}",
-                    Long.toHexString(zxid), followerAddr);
+            LOG.warn("Trying to commit future proposal: zxid 0x{} from {}", Long.toHexString(zxid), followerAddr);
             return;
         }
-        
+
+        // 加入该提议的ack集合中
         p.ackSet.add(sid);
         if (LOG.isDebugEnabled()) {
-            LOG.debug("Count for zxid: 0x{} is {}",
-                    Long.toHexString(zxid), p.ackSet.size());
+            LOG.debug("Count for zxid: 0x{} is {}", Long.toHexString(zxid), p.ackSet.size());
         }
+        // 如果已经过半写成功了
         if (self.getQuorumVerifier().containsQuorum(p.ackSet)){             
             if (zxid != lastCommitted+1) {
-                LOG.warn("Commiting zxid 0x{} from {} not first!",
-                        Long.toHexString(zxid), followerAddr);
+                LOG.warn("Commiting zxid 0x{} from {} not first!", Long.toHexString(zxid), followerAddr);
                 LOG.warn("First is 0x{}", Long.toHexString(lastCommitted + 1));
             }
             outstandingProposals.remove(zxid);
@@ -584,8 +590,11 @@ public class Leader {
                 if (p.request == null) {
                     LOG.warn("Going to commmit null request for proposal: {}", p);
                 }
+                // 发送COMMIT给所有的follower，同事会更新lastCommitted
                 commit(zxid);
+                // 发送INFORM给所有的observer
                 inform(p);
+
                 zk.commitProcessor.commit(p.request);
                 if(pendingSyncs.containsKey(zxid)){
                     for(LearnerSyncRequest r: pendingSyncs.remove(zxid)) {
@@ -595,8 +604,7 @@ public class Leader {
                 return;
             } else {
                 lastCommitted = zxid;
-                LOG.info("Have quorum of supporters; starting up and setting last processed zxid: 0x{}",
-                        Long.toHexString(zk.getZxid()));
+                LOG.info("Have quorum of supporters; starting up and setting last processed zxid: 0x{}", Long.toHexString(zk.getZxid()));
                 zk.startup();
                 zk.getZKDatabase().setlastProcessedZxid(zk.getZxid());
             }
@@ -701,8 +709,7 @@ public class Leader {
      * @param proposal
      */
     public void inform(Proposal proposal) {   
-        QuorumPacket qp = new QuorumPacket(Leader.INFORM, proposal.request.zxid, 
-                                            proposal.packet.getData(), null);
+        QuorumPacket qp = new QuorumPacket(Leader.INFORM, proposal.request.zxid, proposal.packet.getData(), null);
         sendObserverPacket(qp);
     }
 
@@ -754,8 +761,7 @@ public class Leader {
         } catch (IOException e) {
             LOG.warn("This really should be impossible", e);
         }
-        QuorumPacket pp = new QuorumPacket(Leader.PROPOSAL, request.zxid, 
-                baos.toByteArray(), null);
+        QuorumPacket pp = new QuorumPacket(Leader.PROPOSAL, request.zxid, baos.toByteArray(), null);
         
         Proposal p = new Proposal();
         p.packet = pp;
@@ -766,7 +772,9 @@ public class Leader {
             }
 
             lastProposed = p.packet.getZxid();
+            // 保存zxid对应的Proposal
             outstandingProposals.put(lastProposed, p);
+            // 将 PROPOSAL 发送给所有的follower
             sendPacket(pp);
         }
         return p;
@@ -812,18 +820,15 @@ public class Leader {
      */
     synchronized public long startForwarding(LearnerHandler handler,
             long lastSeenZxid) {
-        // Queue up any outstanding requests enabling the receipt of
-        // new requests
+        // Queue up any outstanding requests enabling the receipt of new requests
         if (lastProposed > lastSeenZxid) {
             for (Proposal p : toBeApplied) {
                 if (p.packet.getZxid() <= lastSeenZxid) {
                     continue;
                 }
                 handler.queuePacket(p.packet);
-                // Since the proposal has been committed we need to send the
-                // commit message also
-                QuorumPacket qp = new QuorumPacket(Leader.COMMIT, p.packet
-                        .getZxid(), null, null);
+                // Since the proposal has been committed we need to send the commit message also
+                QuorumPacket qp = new QuorumPacket(Leader.COMMIT, p.packet.getZxid(), null, null);
                 handler.queuePacket(qp);
             }
             List<Long>zxids = new ArrayList<Long>(outstandingProposals.keySet());
@@ -851,10 +856,12 @@ public class Leader {
                 return epoch;
             }
             if (lastAcceptedEpoch >= epoch) {
+                // leader会把收集到的follower中最大的acceptEpoch+1作为自己的acceptEpoch
                 epoch = lastAcceptedEpoch+1;
             }
             connectingFollowers.add(sid);
             QuorumVerifier verifier = self.getQuorumVerifier();
+            // 收集到超半数以上的节点信息后
             if (connectingFollowers.contains(self.getId()) && 
                                             verifier.containsQuorum(connectingFollowers)) {
                 waitingForNewEpoch = false;

@@ -92,6 +92,9 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
      */
     private static  boolean failCreate = false;
 
+    /**
+     * 提交的请求
+     */
     LinkedBlockingQueue<Request> submittedRequests = new LinkedBlockingQueue<Request>();
 
     RequestProcessor nextProcessor;
@@ -303,8 +306,7 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
     protected void pRequest2Txn(int type, long zxid, Request request, Record record, boolean deserialize)
         throws KeeperException, IOException, RequestProcessorException
     {
-        request.hdr = new TxnHeader(request.sessionId, request.cxid, zxid,
-                                    zks.getTime(), type);
+        request.hdr = new TxnHeader(request.sessionId, request.cxid, zxid, zks.getTime(), type);
 
         switch (type) {
             case OpCode.create:                
@@ -323,11 +325,13 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 if (!fixupACL(request.authInfo, listACL)) {
                     throw new KeeperException.InvalidACLException(path);
                 }
+
+                // 父级path
                 String parentPath = path.substring(0, lastSlash);
                 ChangeRecord parentRecord = getRecordForPath(parentPath);
 
-                checkACL(zks, parentRecord.acl, ZooDefs.Perms.CREATE,
-                        request.authInfo);
+                // 校验是否具有父级path权限
+                checkACL(zks, parentRecord.acl, ZooDefs.Perms.CREATE, request.authInfo);
                 int parentCVersion = parentRecord.stat.getCversion();
                 CreateMode createMode =
                     CreateMode.fromFlag(createRequest.getFlags());
@@ -364,8 +368,7 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 parentRecord.childCount++;
                 parentRecord.stat.setCversion(newCversion);
                 addChangeRecord(parentRecord);
-                addChangeRecord(new ChangeRecord(request.hdr.getZxid(), path, s,
-                        0, listACL));
+                addChangeRecord(new ChangeRecord(request.hdr.getZxid(), path, s, 0, listACL));
                 break;
             case OpCode.delete:
                 zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
@@ -443,6 +446,7 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 break;
             case OpCode.createSession:
                 request.request.rewind();
+                // 超时时间
                 int to = request.request.getInt();
                 request.txn = new CreateSessionTxn(to);
                 request.request.rewind();
@@ -459,9 +463,11 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 synchronized (zks.outstandingChanges) {
                     for (ChangeRecord c : zks.outstandingChanges) {
                         if (c.stat == null) {
+                            // 节点删除请求
                             // Doing a delete
                             es.remove(c.path);
                         } else if (c.stat.getEphemeralOwner() == request.sessionId) {
+                            // 临时节点创建请求
                             es.add(c.path);
                         }
                     }
@@ -473,8 +479,7 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                     zks.sessionTracker.setSessionClosing(request.sessionId);
                 }
 
-                LOG.info("Processed session termination for sessionid: 0x"
-                        + Long.toHexString(request.sessionId));
+                LOG.info("Processed session termination for sessionid: 0x" + Long.toHexString(request.sessionId));
                 break;
             case OpCode.check:
                 zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
@@ -652,6 +657,7 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
             }
         }
         request.zxid = zks.getZxid();
+        // ProposalRequestProcessor
         nextProcessor.processRequest(request);
     }
 

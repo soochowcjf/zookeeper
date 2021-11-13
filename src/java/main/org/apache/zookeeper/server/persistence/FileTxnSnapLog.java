@@ -39,17 +39,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * This is a helper class 
- * above the implementations 
- * of txnlog and snapshot 
- * classes
+ * This is a helper class above the implementations of txnlog and snapshot classes
  */
 public class FileTxnSnapLog {
-    //the direcotry containing the 
-    //the transaction logs
+    //the direcotry containing the transaction logs
     private final File dataDir;
-    //the directory containing the
-    //the snapshot directory
+    //the directory containing the snapshot directory
     private final File snapDir;
     private TxnLog txnLog;
     private SnapShot snapLog;
@@ -59,11 +54,8 @@ public class FileTxnSnapLog {
     private static final Logger LOG = LoggerFactory.getLogger(FileTxnSnapLog.class);
     
     /**
-     * This listener helps
-     * the external apis calling
-     * restore to gather information
-     * while the data is being 
-     * restored.
+     * This listener helps the external apis calling restore to gather information
+     * while the data is being restored.
      */
     public interface PlayBackListener {
         void onTxnLoaded(TxnHeader hdr, Record rec);
@@ -106,7 +98,7 @@ public class FileTxnSnapLog {
     }
     
     /**
-     * get the snap dir used by this 
+     * get the snap dir used by this
      * filetxn snap log
      * @return the snap dir
      */
@@ -115,9 +107,8 @@ public class FileTxnSnapLog {
     }
     
     /**
-     * this function restores the server 
-     * database after reading from the 
-     * snapshots and transaction logs
+     * this function restores the server database after reading from the snapshots and transaction logs
+     *
      * @param dt the datatree to be restored
      * @param sessions the sessions to be restored
      * @param listener the playback listener to run on the 
@@ -127,8 +118,10 @@ public class FileTxnSnapLog {
      */
     public long restore(DataTree dt, Map<Long, Integer> sessions, 
             PlayBackListener listener) throws IOException {
+        // 数据快照反序列化到内存中
         snapLog.deserialize(dt, sessions);
         FileTxnLog txnLog = new FileTxnLog(dataDir);
+        // 从数据快照恢复的zxid后开始读取事务日志
         TxnIterator itr = txnLog.read(dt.lastProcessedZxid+1);
         long highestZxid = dt.lastProcessedZxid;
         TxnHeader hdr;

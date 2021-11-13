@@ -53,6 +53,7 @@ public class SerializeUtils {
         final ByteArrayInputStream bais = new ByteArrayInputStream(txnBytes);
         InputArchive ia = BinaryInputArchive.getArchive(bais);
 
+        // 反序列化TxnHeader
         hdr.deserialize(ia, "hdr");
         bais.mark(bais.available());
         Record txn = null;
@@ -87,6 +88,7 @@ public class SerializeUtils {
         }
         if (txn != null) {
             try {
+                // 反序列化 Record
                 txn.deserialize(ia, "txn");
             } catch(EOFException e) {
                 // perhaps this is a V0 Create
@@ -112,6 +114,7 @@ public class SerializeUtils {
 
     public static void deserializeSnapshot(DataTree dt,InputArchive ia,
             Map<Long, Integer> sessions) throws IOException {
+        // 反序列化sessionTimeout
         int count = ia.readInt("count");
         while (count > 0) {
             long id = ia.readLong("id");
@@ -130,11 +133,14 @@ public class SerializeUtils {
     public static void serializeSnapshot(DataTree dt,OutputArchive oa,
             Map<Long, Integer> sessions) throws IOException {
         HashMap<Long, Integer> sessSnap = new HashMap<Long, Integer>(sessions);
+        // 先写session的size
         oa.writeInt(sessSnap.size(), "count");
+        // 再写sessionTimeout集合
         for (Entry<Long, Integer> entry : sessSnap.entrySet()) {
             oa.writeLong(entry.getKey().longValue(), "id");
             oa.writeInt(entry.getValue().intValue(), "timeout");
         }
+        // 序列化内存树
         dt.serialize(oa, "tree");
     }
 

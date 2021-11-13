@@ -68,8 +68,10 @@ public class NIOServerCnxn extends ServerCnxn {
 
     boolean initialized;
 
+    // 4字节的长度域
     ByteBuffer lenBuffer = ByteBuffer.allocate(4);
 
+    // 后面的请求体
     ByteBuffer incomingBuffer = lenBuffer;
 
     LinkedBlockingQueue<ByteBuffer> outgoingBuffers = new LinkedBlockingQueue<ByteBuffer>();
@@ -92,8 +94,7 @@ public class NIOServerCnxn extends ServerCnxn {
     static long nextSessionId = 1;
     int outstandingLimit = 1;
 
-    public NIOServerCnxn(ZooKeeperServer zk, SocketChannel sock,
-            SelectionKey sk, NIOServerCnxnFactory factory) throws IOException {
+    public NIOServerCnxn(ZooKeeperServer zk, SocketChannel sock, SelectionKey sk, NIOServerCnxnFactory factory) throws IOException {
         this.zkServer = zk;
         this.sock = sock;
         this.sk = sk;
@@ -196,6 +197,7 @@ public class NIOServerCnxn extends ServerCnxn {
         if (incomingBuffer.remaining() == 0) { // have we read length bytes?
             packetReceived();
             incomingBuffer.flip();
+            // 连接刚建立的时候，这个initialized是false，读完第一个ConnectRequest请求之后，才会将该标志设置为true
             if (!initialized) {
                 readConnectRequest();
             } else {
@@ -214,6 +216,8 @@ public class NIOServerCnxn extends ServerCnxn {
 
                 return;
             }
+
+            // 处理读请求
             if (k.isReadable()) {
                 int rc = sock.read(incomingBuffer);
                 if (rc < 0) {

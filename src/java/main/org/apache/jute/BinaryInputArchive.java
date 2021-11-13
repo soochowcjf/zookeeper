@@ -94,6 +94,7 @@ public class BinaryInputArchive implements InputArchive {
         
     }
     public byte[] readBuffer(String tag) throws IOException {
+        // 先读取长度域
         int len = readInt(tag);
         if (len == -1) return null;
         if (len < 0 || len > maxBuffer) {

@@ -79,8 +79,7 @@ public class DataTree {
      * This hashtable provides a fast lookup to the datanodes. The tree is the
      * source of truth and is where all the locking occurs
      */
-    private final ConcurrentHashMap<String, DataNode> nodes =
-        new ConcurrentHashMap<String, DataNode>();
+    private final ConcurrentHashMap<String, DataNode> nodes = new ConcurrentHashMap<String, DataNode>();
 
     private final WatchManager dataWatches = new WatchManager();
 
@@ -89,18 +88,22 @@ public class DataTree {
     /** the root of zookeeper tree */
     private static final String rootZookeeper = "/";
 
+    // /zookeeper
     /** the zookeeper nodes that acts as the management and status node **/
     private static final String procZookeeper = Quotas.procZookeeper;
 
+    // zookeeper
     /** this will be the string thats stored as a child of root */
     private static final String procChildZookeeper = procZookeeper.substring(1);
 
+    // /zookeeper/quota
     /**
      * the zookeeper quota node that acts as the quota management node for
      * zookeeper
      */
     private static final String quotaZookeeper = Quotas.quotaZookeeper;
 
+    // quota
     /** this will be the string thats stored as a child of /zookeeper */
     private static final String quotaChildZookeeper = quotaZookeeper
             .substring(procZookeeper.length() + 1);
@@ -113,21 +116,20 @@ public class DataTree {
     /**
      * This hashtable lists the paths of the ephemeral nodes of a session.
      */
-    private final Map<Long, HashSet<String>> ephemerals =
-        new ConcurrentHashMap<Long, HashSet<String>>();
+    private final Map<Long, HashSet<String>> ephemerals = new ConcurrentHashMap<Long, HashSet<String>>();
 
     /**
+     * 每个dataNode对应的权限集合，DataNode中都有一个字段acl，对应这个map的key
+     *
      * this is map from longs to acl's. It saves acl's being stored for each
      * datanode.
      */
-    public final Map<Long, List<ACL>> longKeyMap =
-        new HashMap<Long, List<ACL>>();
+    public final Map<Long, List<ACL>> longKeyMap = new HashMap<Long, List<ACL>>();
 
     /**
      * this a map from acls to long.
      */
-    public final Map<List<ACL>, Long> aclKeyMap =
-        new HashMap<List<ACL>, Long>();
+    public final Map<List<ACL>, Long> aclKeyMap = new HashMap<List<ACL>, Long>();
 
     /**
      * these are the number of acls that we have in the datatree
@@ -303,9 +305,11 @@ public class DataTree {
 
         /** add the proc node and quota node */
         root.addChild(procChildZookeeper);
+        // /zookeeper
         nodes.put(procZookeeper, procDataNode);
 
         procDataNode.addChild(quotaChildZookeeper);
+        // /zookeeper/quota
         nodes.put(quotaZookeeper, quotaDataNode);
     }
 
@@ -771,6 +775,7 @@ public class DataTree {
 
     }
 
+    // 最后处理的zxid
     public volatile long lastProcessedZxid = 0;
 
     public ProcessTxnResult processTxn(TxnHeader header, Record txn)
@@ -1111,8 +1116,12 @@ public class DataTree {
         String children[] = null;
         synchronized (node) {
             scount++;
+            // 序列化path
             oa.writeString(pathString, "path");
+            // 序列化
             oa.writeRecord(node, "node");
+
+            // 子节点
             Set<String> childs = node.getChildren();
             if (childs != null) {
                 children = childs.toArray(new String[childs.size()]);
@@ -1163,10 +1172,14 @@ public class DataTree {
         oa.writeInt(longKeyMap.size(), "map");
         Set<Map.Entry<Long, List<ACL>>> set = longKeyMap.entrySet();
         for (Map.Entry<Long, List<ACL>> val : set) {
+            // dataNode的acl
             oa.writeLong(val.getKey(), "long");
+            // 该dataNode需要的权限
             List<ACL> aclList = val.getValue();
+
             oa.startVector(aclList, "acls");
             for (ACL acl : aclList) {
+                // 序列化响应的acl
                 acl.serialize(oa, "acl");
             }
             oa.endVector(aclList, "acls");
@@ -1175,8 +1188,11 @@ public class DataTree {
 
     public void serialize(OutputArchive oa, String tag) throws IOException {
         scount = 0;
+        // 序列化节点的acl信息
         serializeList(longKeyMap, oa);
+
         serializeNode(oa, new StringBuilder(""));
+        // 写一个 "/"标志结尾
         // / marks end of stream
         // we need to check if clear had been called in between the snapshot.
         if (root != null) {
@@ -1196,15 +1212,18 @@ public class DataTree {
             if (lastSlash == -1) {
                 root = node;
             } else {
+                // 父节点
                 String parentPath = path.substring(0, lastSlash);
                 node.parent = nodes.get(parentPath);
                 if (node.parent == null) {
                     throw new IOException("Invalid Datatree, unable to find " +
                             "parent " + parentPath + " of path " + path);
                 }
+                // 加入到子节点中
                 node.parent.addChild(path.substring(lastSlash + 1));
                 long eowner = node.stat.getEphemeralOwner();
                 if (eowner != 0) {
+                    // 临时节点，这个eowner是sessionId
                     HashSet<String> list = ephemerals.get(eowner);
                     if (list == null) {
                         list = new HashSet<String>();
@@ -1213,6 +1232,7 @@ public class DataTree {
                     list.add(path);
                 }
             }
+            // 继续读取下一个path
             path = ia.readString("path");
         }
         nodes.put("/", root);
