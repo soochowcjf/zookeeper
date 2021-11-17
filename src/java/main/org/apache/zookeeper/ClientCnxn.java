@@ -617,6 +617,7 @@ public class ClientCnxn {
     }
 
     private void finishPacket(Packet p) {
+        // 接收到服务端的响应之后，注册监听器
         if (p.watchRegistration != null) {
             p.watchRegistration.register(p.replyHeader.getErr());
         }
@@ -978,6 +979,7 @@ public class ClientCnxn {
             long lastPingRwServer = System.currentTimeMillis();
             while (state.isAlive()) {
                 try {
+                    // 刚开始或者异常了，连接都会为null，然后进行重连
                     if (!clientCnxnSocket.isConnected()) {
                         if(!isFirstConnect){
                             try {
@@ -1097,6 +1099,7 @@ public class ClientCnxn {
                                             + ", unexpected error"
                                             + RETRY_CONN_MSG, e);
                         }
+                        // 如果异常了，关闭该socketChannel，后面会重新进行连接
                         cleanup();
                         if (state.isAlive()) {
                             eventThread.queueEvent(new WatchedEvent(

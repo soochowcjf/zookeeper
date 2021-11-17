@@ -57,26 +57,39 @@ public class Request {
         this.authInfo = authInfo;
     }
 
+    // 该请求的sessionId
     public final long sessionId;
 
+    // 标识该请求在客户端的序号
     public final int cxid;
 
+    // 请求类型
     public final int type;
 
+    // 请求体
     public final ByteBuffer request;
 
+    // 读取该请求的连接，是和会话一一对应的
     public final ServerCnxn cnxn;
 
+    // 封装成proposal的事务头
     public TxnHeader hdr;
 
+    // 封装成proposal的事务体
     public Record txn;
 
+    // proposal的序号
     public long zxid = -1;
 
+    // 该连接具有的权限
     public final List<Id> authInfo;
 
+    // 该请求的创建时间
     public final long createTime = System.currentTimeMillis();
-    
+
+    // 请求的owner
+    // 这个呢，是用来判断session是哪个节点的，
+    // 如果客户端连接的是follower1的那就是指向follower1的LearnerHandler，如果连接的leader，那就指向leader
     private Object owner;
     
     private KeeperException e;

@@ -564,6 +564,7 @@ public class LearnerHandler extends Thread {
                     } else {
                         si = new Request(null, sessionId, cxid, type, bb, qp.getAuthinfo());
                     }
+                    // 设置owner为该LearnerHandler
                     si.setOwner(this);
                     leader.zk.submitRequest(si);
                     break;

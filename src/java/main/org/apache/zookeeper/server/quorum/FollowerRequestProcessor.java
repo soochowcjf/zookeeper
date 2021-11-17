@@ -63,9 +63,12 @@ public class FollowerRequestProcessor extends Thread implements
                 if (request == Request.requestOfDeath) {
                     break;
                 }
+
                 // We want to queue the request to be processed before we submit
                 // the request to the leader so that we are ready to receive
                 // the response
+
+                // 下一个是commitProcessor
                 nextProcessor.processRequest(request);
                 
                 // We now ship the request to the leader. As with all

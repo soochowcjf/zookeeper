@@ -149,6 +149,7 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
     ChangeRecord getRecordForPath(String path) throws KeeperException.NoNodeException {
         ChangeRecord lastChange = null;
         synchronized (zks.outstandingChanges) {
+            // 先从变更map中查一下，这里查找出来的其实是待处理的变更
             lastChange = zks.outstandingChangesForPath.get(path);
             /*
             for (int i = 0; i < zks.outstandingChanges.size(); i++) {
@@ -158,17 +159,22 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 }
             }
             */
+
+            // 如果为空的话，就去dataBase中查询一下
             if (lastChange == null) {
                 DataNode n = zks.getZKDatabase().getNode(path);
                 if (n != null) {
                     Long acl;
                     Set<String> children;
+                    // 锁住该DataNode
                     synchronized(n) {
                         acl = n.acl;
                         children = n.getChildren();
                     }
+                    // 构建变更记录
                     lastChange = new ChangeRecord(-1, path, n.stat,
                         children != null ? children.size() : 0,
+                            // 在dataTree中是保存了每个节点的acl集合信息的
                             zks.getZKDatabase().convertLong(acl));
                 }
             }
@@ -294,6 +300,27 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
     }
 
     /**
+     *  StatPersisted:
+     *
+     *   // 创建该node的zxid
+     *   private long czxid;
+     *   // 最近修改该node的zxid
+     *   private long mzxid;
+     *   // 创建该node的时间
+     *   private long ctime;
+     *   // 最近修改该node的时间
+     *   private long mtime;
+     *   // 该node的版本
+     *   private int version;
+     *   // 对此node的子节点的更改次数
+     *   private int cversion;
+     *   // 对此node的acl的更改次数
+     *   private int aversion;
+     *   // 如果是ephemeral节点，则是sessionId，如果不是ephemeral节点，则为0
+     *   private long ephemeralOwner;
+     *   // 用于添加或删除子节点的znode更改的事务ID。
+     *   private long pzxid;
+     *
      * This method will be called inside the ProcessRequestThread, which is a
      * singleton, so there will be a single thread calling this code.
      *
@@ -306,15 +333,18 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
     protected void pRequest2Txn(int type, long zxid, Request request, Record record, boolean deserialize)
         throws KeeperException, IOException, RequestProcessorException
     {
+        // request的事务头
         request.hdr = new TxnHeader(request.sessionId, request.cxid, zxid, zks.getTime(), type);
 
         switch (type) {
-            case OpCode.create:                
+            case OpCode.create:
+                // 校验session会话的有效期
                 zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
                 CreateRequest createRequest = (CreateRequest)record;   
                 if(deserialize)
                     ByteBufferInputStream.byteBuffer2Record(request.request, createRequest);
                 String path = createRequest.getPath();
+                // 最后'/'的位置
                 int lastSlash = path.lastIndexOf('/');
                 if (lastSlash == -1 || path.indexOf('\0') != -1 || failCreate) {
                     LOG.info("Invalid path " + path + " with session 0x" +
@@ -328,14 +358,19 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
 
                 // 父级path
                 String parentPath = path.substring(0, lastSlash);
+                // 获取父path的changeRecord
                 ChangeRecord parentRecord = getRecordForPath(parentPath);
 
                 // 校验是否具有父级path权限
                 checkACL(zks, parentRecord.acl, ZooDefs.Perms.CREATE, request.authInfo);
+                // 子节点的变更次数
                 int parentCVersion = parentRecord.stat.getCversion();
+                // 节点类型
                 CreateMode createMode =
                     CreateMode.fromFlag(createRequest.getFlags());
+                // 如果是顺序节点
                 if (createMode.isSequential()) {
+                    // 格式化一个整数,位数不够向前补0，只能长度为10位
                     path = path + String.format(Locale.ENGLISH, "%010d", parentCVersion);
                 }
                 try {
@@ -354,20 +389,28 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 }
                 boolean ephemeralParent = parentRecord.stat.getEphemeralOwner() != 0;
                 if (ephemeralParent) {
+                    // 如果父节点是临时节点
                     throw new KeeperException.NoChildrenForEphemeralsException(path);
                 }
+                // 子节点变更次数+1
                 int newCversion = parentRecord.stat.getCversion()+1;
+                // 设置request的事务体
                 request.txn = new CreateTxn(path, createRequest.getData(),
                         listACL,
                         createMode.isEphemeral(), newCversion);
                 StatPersisted s = new StatPersisted();
                 if (createMode.isEphemeral()) {
+                    // 如果是临时节点，设置他的owner为sessionId
                     s.setEphemeralOwner(request.sessionId);
                 }
                 parentRecord = parentRecord.duplicate(request.hdr.getZxid());
+                // 父节点的子节点数+1
                 parentRecord.childCount++;
+                // 设置他的子节点变更次数
                 parentRecord.stat.setCversion(newCversion);
+                // 将父节点变更加到outstandingChanges队列
                 addChangeRecord(parentRecord);
+                // 将子节点变更加到outstandingChanges队列
                 addChangeRecord(new ChangeRecord(request.hdr.getZxid(), path, s, 0, listACL));
                 break;
             case OpCode.delete:
@@ -451,6 +494,7 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 request.txn = new CreateSessionTxn(to);
                 request.request.rewind();
                 zks.sessionTracker.addSession(request.sessionId, to);
+                // 设置这个session的owner，是leader还是follower
                 zks.setOwner(request.sessionId, request.getOwner());
                 break;
             case OpCode.closeSession:
@@ -458,16 +502,18 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                 // queues up this operation without being the session owner.
                 // this request is the last of the session so it should be ok
                 //zks.sessionTracker.checkSession(request.sessionId, request.getOwner());
-                HashSet<String> es = zks.getZKDatabase()
-                        .getEphemerals(request.sessionId);
+
+                // 获取该session创建的临时节点
+                HashSet<String> es = zks.getZKDatabase().getEphemerals(request.sessionId);
                 synchronized (zks.outstandingChanges) {
                     for (ChangeRecord c : zks.outstandingChanges) {
                         if (c.stat == null) {
-                            // 节点删除请求
+                            // 如果在队列中存在节点删除请求，那么就需要移除他，避免重复执行（因为如果已经在队列中的，说明删除请求是在关闭会话请求之前的）
                             // Doing a delete
                             es.remove(c.path);
                         } else if (c.stat.getEphemeralOwner() == request.sessionId) {
-                            // 临时节点创建请求
+                            // 临时节点创建请求，因为实在队列中的，所有该临时节点创建请求一定是在过期会话请求之前的，
+                            // 所以我们过期会话的话，是需要删除该临时节点的
                             es.add(c.path);
                         }
                     }
@@ -476,6 +522,7 @@ public class PrepRequestProcessor extends Thread implements RequestProcessor {
                                 path2Delete, null, 0, null));
                     }
 
+                    // 设置该session的isClosing为true
                     zks.sessionTracker.setSessionClosing(request.sessionId);
                 }
 

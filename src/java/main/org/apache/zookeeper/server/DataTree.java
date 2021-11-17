@@ -114,6 +114,9 @@ public class DataTree {
     private final PathTrie pTrie = new PathTrie();
 
     /**
+     * key：sessionId
+     * value：该session创建的所有临时节点path
+     *
      * This hashtable lists the paths of the ephemeral nodes of a session.
      */
     private final Map<Long, HashSet<String>> ephemerals = new ConcurrentHashMap<Long, HashSet<String>>();
@@ -456,10 +459,11 @@ public class DataTree {
      */
     public String createNode(String path, byte data[], List<ACL> acl,
             long ephemeralOwner, int parentCVersion, long zxid, long time)
-            throws KeeperException.NoNodeException,
-            KeeperException.NodeExistsException {
+            throws KeeperException.NoNodeException, KeeperException.NodeExistsException {
         int lastSlash = path.lastIndexOf('/');
+        // 父path
         String parentName = path.substring(0, lastSlash);
+        // 子path
         String childName = path.substring(lastSlash + 1);
         StatPersisted stat = new StatPersisted();
         stat.setCtime(time);
@@ -470,11 +474,13 @@ public class DataTree {
         stat.setVersion(0);
         stat.setAversion(0);
         stat.setEphemeralOwner(ephemeralOwner);
+        // 父dataNode
         DataNode parent = nodes.get(parentName);
         if (parent == null) {
             throw new KeeperException.NoNodeException();
         }
         synchronized (parent) {
+            // 所有子节点path
             Set<String> children = parent.getChildren();
             if (children != null) {
                 if (children.contains(childName)) {
@@ -485,13 +491,18 @@ public class DataTree {
             if (parentCVersion == -1) {
                 parentCVersion = parent.stat.getCversion();
                 parentCVersion++;
-            }    
+            }
+            // 设置父节点的子节点变更次数
             parent.stat.setCversion(parentCVersion);
             parent.stat.setPzxid(zxid);
             Long longval = convertAcls(acl);
+            // 创建该节点
             DataNode child = new DataNode(parent, data, longval, stat);
+            // 加入到父节点下
             parent.addChild(childName);
+            // 存入map
             nodes.put(path, child);
+            // 将该path放入该session所创建的临时节点集合中去
             if (ephemeralOwner != 0) {
                 HashSet<String> list = ephemerals.get(ephemeralOwner);
                 if (list == null) {
@@ -523,7 +534,9 @@ public class DataTree {
             updateCount(lastPrefix, 1);
             updateBytes(lastPrefix, data == null ? 0 : data.length);
         }
+        // 触发该path的节点新建
         dataWatches.triggerWatch(path, Event.EventType.NodeCreated);
+        // 触发父path的子节点变更
         childWatches.triggerWatch(parentName.equals("") ? "/" : parentName,
                 Event.EventType.NodeChildrenChanged);
         return path;
@@ -783,20 +796,26 @@ public class DataTree {
         ProcessTxnResult rc = new ProcessTxnResult();
 
         try {
+            // 这个其实是sessionId
             rc.clientId = header.getClientId();
+            // 这个是客户端该请求的序号
             rc.cxid = header.getCxid();
+            // zxid
             rc.zxid = header.getZxid();
+            // 请求类型
             rc.type = header.getType();
             rc.err = 0;
             rc.multiResult = null;
             switch (header.getType()) {
                 case OpCode.create:
                     CreateTxn createTxn = (CreateTxn) txn;
+                    // path
                     rc.path = createTxn.getPath();
                     createNode(
                             createTxn.getPath(),
                             createTxn.getData(),
                             createTxn.getAcl(),
+                            // 如果是临时节点，那就是sessionId，否则就是0
                             createTxn.getEphemeral() ? header.getClientId() : 0,
                             createTxn.getParentCVersion(),
                             header.getZxid(), header.getTime());
@@ -820,6 +839,7 @@ public class DataTree {
                             setACLTxn.getVersion());
                     break;
                 case OpCode.closeSession:
+                    // 关闭session
                     killSession(header.getClientId(), header.getZxid());
                     break;
                 case OpCode.error:
@@ -964,6 +984,8 @@ public class DataTree {
         // so there is no need for synchronization. The list is not
         // changed here. Only create and delete change the list which
         // are again called from FinalRequestProcessor in sequence.
+
+        // 移除该session对应的临时节点
         HashSet<String> list = ephemerals.remove(session);
         if (list != null) {
             for (String path : list) {
@@ -1136,6 +1158,7 @@ public class DataTree {
                 // to truncate the previous bytes of string.
                 path.delete(off, Integer.MAX_VALUE);
                 path.append(child);
+                // 递归序列化
                 serializeNode(oa, path);
             }
         }
@@ -1293,6 +1316,15 @@ public class DataTree {
         // childWatches = null;
     }
 
+    /**
+     * 设置watcher
+     *
+     * @param relativeZxid
+     * @param dataWatches
+     * @param existWatches
+     * @param childWatches
+     * @param watcher
+     */
     public void setWatches(long relativeZxid, List<String> dataWatches,
             List<String> existWatches, List<String> childWatches,
             Watcher watcher) {

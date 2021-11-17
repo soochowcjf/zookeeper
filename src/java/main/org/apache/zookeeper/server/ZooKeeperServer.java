@@ -524,6 +524,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         ByteBuffer to = ByteBuffer.allocate(4);
         // 超时时间
         to.putInt(timeout);
+        // 该连接关联sessionId
         cnxn.setSessionId(sessionId);
         submitRequest(cnxn, sessionId, OpCode.createSession, 0, to, null);
         return sessionId;
@@ -649,7 +650,8 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
             touch(si.cnxn);
             boolean validpacket = Request.isValid(si.type);
             if (validpacket) {
-                // PrepRequestProcessor
+                // leader => PrepRequestProcessor
+                // follower => FollowerRequestProcessor
                 firstProcessor.processRequest(si);
                 if (si.cnxn != null) {
                     incInProcess();
@@ -830,13 +832,16 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         if (sessionTimeout > maxSessionTimeout) {
             sessionTimeout = maxSessionTimeout;
         }
+        // 设置session的过期时间
         cnxn.setSessionTimeout(sessionTimeout);
         // We don't want to receive any packets until we are sure that the
         // session is setup
         cnxn.disableRecv();
+        // 客户端刚启动第一次连接传过来的sessionId=0，后面如果网络异常，重新连接，有可能是不为0的
         long sessionId = connReq.getSessionId();
         // 刚建立的连接，请求的sessionId=0
         if (sessionId != 0) {
+            // 走到这里呢，说明有可能是客户端网络异常，然后重连了，之前的服务端的连接就需要断开，然后重新关联session与新的连接
             long clientSessionId = connReq.getSessionId();
             LOG.info("Client attempting to renew session 0x"
                     + Long.toHexString(clientSessionId)
@@ -920,6 +925,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
             }
             else {
                 Request si = new Request(cnxn, cnxn.getSessionId(), h.getXid(), h.getType(), incomingBuffer, cnxn.getAuthInfo());
+                // 设置请求的owner
                 si.setOwner(ServerCnxn.me);
                 submitRequest(si);
             }

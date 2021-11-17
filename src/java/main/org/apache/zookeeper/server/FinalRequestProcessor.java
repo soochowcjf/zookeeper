@@ -98,12 +98,14 @@ public class FinalRequestProcessor implements RequestProcessor {
         ProcessTxnResult rc = null;
         synchronized (zks.outstandingChanges) {
             while (!zks.outstandingChanges.isEmpty() && zks.outstandingChanges.get(0).zxid <= request.zxid) {
+                // 取出一个changeRecord
                 ChangeRecord cr = zks.outstandingChanges.remove(0);
                 if (cr.zxid < request.zxid) {
                     LOG.warn("Zxid outstanding "
                             + cr.zxid
                             + " is less than current " + request.zxid);
                 }
+                // 从map中移除
                 if (zks.outstandingChangesForPath.get(cr.path) == cr) {
                     zks.outstandingChangesForPath.remove(cr.path);
                 }
@@ -131,6 +133,7 @@ public class FinalRequestProcessor implements RequestProcessor {
                 // close session response being lost - we've already closed
                 // the session/socket here before we can send the closeSession
                 // in the switch block below
+                // 因为会话被关闭了，那么与该客户端的连接也是需要被关闭的
                 scxn.closeSession(request.sessionId);
                 return;
             }

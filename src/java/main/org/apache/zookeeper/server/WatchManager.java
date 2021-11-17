@@ -38,11 +38,11 @@ import org.apache.zookeeper.Watcher.Event.KeeperState;
 public class WatchManager {
     private static final Logger LOG = LoggerFactory.getLogger(WatchManager.class);
 
-    private final HashMap<String, HashSet<Watcher>> watchTable =
-        new HashMap<String, HashSet<Watcher>>();
+    // 某个path对应的所有的监听器
+    private final HashMap<String, HashSet<Watcher>> watchTable = new HashMap<String, HashSet<Watcher>>();
 
-    private final HashMap<Watcher, HashSet<String>> watch2Paths =
-        new HashMap<Watcher, HashSet<String>>();
+    // 某个监听器对应的所有的path
+    private final HashMap<Watcher, HashSet<String>> watch2Paths = new HashMap<Watcher, HashSet<String>>();
 
     public synchronized int size(){
         int result = 0;
@@ -53,6 +53,7 @@ public class WatchManager {
     }
 
     public synchronized void addWatch(String path, Watcher watcher) {
+        // 获取该path对应的watcher
         HashSet<Watcher> list = watchTable.get(path);
         if (list == null) {
             // don't waste memory if there are few watches on a node
@@ -61,8 +62,10 @@ public class WatchManager {
             list = new HashSet<Watcher>(4);
             watchTable.put(path, list);
         }
+        // 加入该watcher
         list.add(watcher);
 
+        // 根据该watcher获取所有关注该watcher的path集合
         HashSet<String> paths = watch2Paths.get(watcher);
         if (paths == null) {
             // cnxns typically have many watches, so use default cap here
@@ -93,10 +96,10 @@ public class WatchManager {
     }
 
     public Set<Watcher> triggerWatch(String path, EventType type, Set<Watcher> supress) {
-        WatchedEvent e = new WatchedEvent(type,
-                KeeperState.SyncConnected, path);
+        WatchedEvent e = new WatchedEvent(type, KeeperState.SyncConnected, path);
         HashSet<Watcher> watchers;
         synchronized (this) {
+            // 移除该path的watcher监听
             watchers = watchTable.remove(path);
             if (watchers == null || watchers.isEmpty()) {
                 if (LOG.isTraceEnabled()) {

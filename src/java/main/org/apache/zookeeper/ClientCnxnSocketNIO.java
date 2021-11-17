@@ -78,6 +78,7 @@ public class ClientCnxnSocketNIO extends ClientCnxnSocket {
                     recvCount++;
                     readLength();
                 } else if (!initialized) {
+                    // 第一次刚连接上服务端后，会发送connectRequest请求，服务端生成session会话之后，会返回connectResult响应
                     readConnectResult();
                     enableRead();
                     if (findSendablePacket(outgoingQueue,
