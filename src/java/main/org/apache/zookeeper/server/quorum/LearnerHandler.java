@@ -359,6 +359,10 @@ public class LearnerHandler extends Thread {
                                 prevProposalZxid = propose.packet.getZxid();
                                 continue;
                             } else {
+                                // 这种情况呢，可能存在于：客户端有些写请求，写给了leader，leader写进本地log日志了，但是没有发送给follower就挂了，
+                                // 然后剩余的两台follower重新选举，选了其中一台follower成为leader。新的leader的epoch会+1，且epoch在zxid的高32位，所以新leader接收的请求的zxid都是大于之前老leader的所有请求的zxid的。
+                                // 之后呢，之前的leader又重启成功了，成为了follower，他需要将之前的那些数据给trunc掉
+
                                 // If we are sending the first packet, figure out whether to trunc
                                 // in case the follower has some proposals that the leader doesn't
                                 if (firstPacket) {
@@ -377,9 +381,11 @@ public class LearnerHandler extends Thread {
                             }
                         }
                     } else if (peerLastZxid > maxCommittedLog) {
-                        // 这种情况呢，可能存在于：客户端一条写请求，写给了leader，leader写进本地log日志了，但是没有发送给follower就挂了，
-                        // 然后剩余的两台follower重新选举，选了其中一台follower成为leader。
-                        // 之后呢，之前的leader又重启成功了，成为了follower，他需要将之前的那条数据给trunc掉
+                        // 这种情况呢，其实是和上面的那种是差不多的，
+                        // leader接收到一些写请求之后，写进了本地log日志，但是还没有发送给follower，或者说发送给了follower，只要是follower还没有应用到内存数据库中，这时候leader挂了，
+                        // 重新选举了一个follower作为leader，他的epoch+1，此时新leader还没有接收新的请求，这时候老leader重启了，那么老leader就会作为follower，他就会发送zxid过来拉取数据
+                        // 这时候是需要将那些还没在follower内存数据库应用的数据给trunc掉的
+
                         LOG.debug("Sending TRUNC to follower zxidToSend=0x{} updates=0x{}",
                                 Long.toHexString(maxCommittedLog),
                                 Long.toHexString(updates));
@@ -423,9 +429,10 @@ public class LearnerHandler extends Thread {
             if (packetToSend == Leader.SNAP) {
                 zxidToSend = leader.zk.getZKDatabase().getDataTreeLastProcessedZxid();
             }
+            // 先发送同步指令给follower，DIFF、SNAP、TRUNC
             oa.writeRecord(new QuorumPacket(packetToSend, zxidToSend, null, null), "packet");
             bufferedOutput.flush();
-            
+
             /* if we are not truncating or sending a diff just send a snapshot */
             if (packetToSend == Leader.SNAP) {
                 LOG.info("Sending snapshot last zxid of peer is 0x"
@@ -440,7 +447,8 @@ public class LearnerHandler extends Thread {
                 oa.writeString("BenWasHere", "signature");
             }
             bufferedOutput.flush();
-            
+
+            // 启动线程同步数据
             // Start sending packets
             new Thread() {
                 public void run() {

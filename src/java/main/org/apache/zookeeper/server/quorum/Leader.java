@@ -603,8 +603,10 @@ public class Leader {
                 }
                 return;
             } else {
+                // 走到这里的话，其实是接收到follower的ack请求了，说明奔溃恢复已经完成了
                 lastCommitted = zxid;
                 LOG.info("Have quorum of supporters; starting up and setting last processed zxid: 0x{}", Long.toHexString(zk.getZxid()));
+                // 启动服务端的ZookeeperServer
                 zk.startup();
                 zk.getZKDatabase().setlastProcessedZxid(zk.getZxid());
             }

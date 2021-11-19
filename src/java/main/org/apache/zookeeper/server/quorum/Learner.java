@@ -319,7 +319,7 @@ public class Learner {
         QuorumPacket qp = new QuorumPacket();
         long newEpoch = ZxidUtils.getEpochFromZxid(newLeaderZxid);
 
-        // 从leader读取数据包
+        // 从leader读取数据同步的指令
         readPacket(qp);   
         LinkedList<Long> packetsCommitted = new LinkedList<Long>();
         LinkedList<PacketInFlight> packetsNotCommitted = new LinkedList<PacketInFlight>();
@@ -328,6 +328,7 @@ public class Learner {
                 LOG.info("Getting a diff from the leader 0x" + Long.toHexString(qp.getZxid()));                
             }
             else if (qp.getType() == Leader.SNAP) {
+                // 如果是SNAP指令的话，那么就开始读取leader发过来的快照文件
                 LOG.info("Getting a snapshot from leader");
                 // The leader is going to dump the database
                 // clear our own database and read
@@ -342,6 +343,7 @@ public class Learner {
                 //we need to truncate the log to the lastzxid of the leader
                 LOG.warn("Truncating log to get in sync with the leader 0x"
                         + Long.toHexString(qp.getZxid()));
+                // 将zxid后面的数据从事务日志文件中删除
                 boolean truncated=zk.getZKDatabase().truncateLog(qp.getZxid());
                 if (!truncated) {
                     // not able to truncate the log
@@ -407,9 +409,11 @@ public class Learner {
                         zk.takeSnapshot();
                         self.setCurrentEpoch(newEpoch);
                     }
+                    // 设置ZooKeeperServer 给 ServerCnxnFactory，就可以开始接受客户端的连接请求了
                     self.cnxnFactory.setZooKeeperServer(zk);                
                     break outerLoop;
                 case Leader.NEWLEADER: // it will be NEWLEADER in v1.0
+                    // 同步好了，写一个快照先
                     zk.takeSnapshot();
                     self.setCurrentEpoch(newEpoch);
                     snapshotTaken = true;
