@@ -1136,6 +1136,8 @@ public class DataTree {
             return;
         }
         String children[] = null;
+
+        // 这里的加锁呢，其实是对根节点加锁，然后次节点加锁，也是分段锁思想
         synchronized (node) {
             scount++;
             // 序列化path

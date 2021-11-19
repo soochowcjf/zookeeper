@@ -228,7 +228,9 @@ public class FileTxnSnapLog {
     public void save(DataTree dataTree,
             ConcurrentHashMap<Long, Integer> sessionsWithTimeouts)
         throws IOException {
+        // 当前内存树的最大的zxid
         long lastZxid = dataTree.lastProcessedZxid;
+        // 命名该快照文件
         File snapshotFile = new File(snapDir, Util.makeSnapshotName(lastZxid));
         LOG.info("Snapshotting: 0x{} to {}", Long.toHexString(lastZxid),
                 snapshotFile);

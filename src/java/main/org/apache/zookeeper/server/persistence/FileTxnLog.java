@@ -202,7 +202,9 @@ public class FileTxnLog implements TxnLog {
                
                logFileWrite = new File(logDir, ("log." + Long.toHexString(hdr.getZxid())));
                fos = new FileOutputStream(logFileWrite);
+               // 缓冲流
                logStream=new BufferedOutputStream(fos);
+               // jute封装的写入流
                oa = BinaryOutputArchive.getArchive(logStream);
                FileHeader fhdr = new FileHeader(TXNLOG_MAGIC,VERSION, dbId);
                fhdr.serialize(oa, "fileheader");

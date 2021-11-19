@@ -198,6 +198,7 @@ public class QuorumCnxManager {
             SendWorker sw = new SendWorker(sock, sid);
             // 创建接收工作组件
             RecvWorker rw = new RecvWorker(sock, sid, sw);
+            // 设置RecvWorker属性给SendWorker
             sw.setRecv(rw);
 
             SendWorker vsw = senderWorkerMap.get(sid);

@@ -111,11 +111,13 @@ public class SyncRequestProcessor extends Thread implements RequestProcessor {
                     // track the number of records written to the log
                     if (zks.getZKDatabase().append(si)) {
                         logCount++;
-                        // 如果写请求到了一定数量，写快照文件
+                        // 如果写请求到了一定数量（差不多在10w的样子），写快照文件
                         if (logCount > (snapCount / 2 + randRoll)) {
                             randRoll = r.nextInt(snapCount/2);
+                            // 写下一个事务日志文件
                             // roll the log
                             zks.getZKDatabase().rollLog();
+                            // 同时启动一个线程，来写快照文件
                             // take a snapshot
                             if (snapInProcess != null && snapInProcess.isAlive()) {
                                 LOG.warn("Too busy to snap, skipping");

@@ -496,6 +496,7 @@ public class FastLeaderElection implements Election {
 
         sendqueue = new LinkedBlockingQueue<ToSend>();
         recvqueue = new LinkedBlockingQueue<Notification>();
+        // 内部也会启动两个线程
         this.messenger = new Messenger(manager);
     }
 
